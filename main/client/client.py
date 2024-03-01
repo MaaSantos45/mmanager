@@ -170,10 +170,11 @@ class Application(ck.CTk):
         for record in selected:
             self.tab_view.list_connections.delete(record)
             try:
+                SOCKETS[record].send(b'Disconnected by host')
+                self.del_user(record, SOCKETS[record])
                 thread, event = THREADS[record]
                 event.set()
                 thread.join(0.5)
-                SOCKETS[record].close()
             except KeyError:
                 continue
             THREADS.pop(record)
@@ -181,6 +182,10 @@ class Application(ck.CTk):
 
     def add_user(self, id_thread, client, addr):
         global USERS
+        try:
+            client.send(b'Connected!\n')
+        except OSError:
+            pass
         USERS[id_thread] = client
         ip, port = addr
         info = f"connected on {client.getsockname()}"
@@ -189,7 +194,11 @@ class Application(ck.CTk):
 
     def del_user(self, id_thread, client):
         global USERS
-        USERS.pop(id_thread)
+        try:
+            client.send(b'Disconnected!\n')
+        except OSError as e:
+            pass
+        USERS.pop(id_thread, None)
         client.close()
         if id_thread in self.tab_view.list_users.get_children():
             self.tab_view.list_users.delete(id_thread)
@@ -214,7 +223,7 @@ class Application(ck.CTk):
 
         # connection = (i_type, i_port, e_host)
         # CONNECTIONS.append(connection)
-        def handle(skt, id_t, evt):
+        def handle_t1(skt, id_t, evt):
             try:
                 children = self.tab_view.list_connections.get_children()
             except RuntimeError:
@@ -238,7 +247,36 @@ class Application(ck.CTk):
                     except Exception as e:
                         print(e)
                         break
-            skt.close()
+            self.del_user(id_t, skt)
+
+        def handle_t2(id_t, evt):
+            try:
+                children = self.tab_view.list_connections.get_children()
+            except RuntimeError:
+                return
+            while id_t in children and not evt.is_set():
+                skt = s.socket(s.AF_INET, s.SOCK_STREAM)
+                SOCKETS[id_thread] = skt
+                try:
+                    skt.connect((i_host, i_port))
+                except (OSError, OverflowError):
+                    time.sleep(1)
+                    pass
+                else:
+                    self.add_user(id_t, skt, (e_host, i_port))
+                    while True:
+                        if evt.is_set():
+                            break
+                        try:
+                            data = skt.recv(1024)
+                            print(data.decode())
+                        except ConnectionResetError:
+                            self.del_user(id_t, skt)
+                            break
+                        except Exception as e:
+                            print(e)
+                            break
+                self.del_user(id_t, skt)
 
         socket = s.socket(s.AF_INET, s.SOCK_STREAM)
         if i_type == 1:
@@ -250,13 +288,22 @@ class Application(ck.CTk):
             else:
                 id_thread = str(uuid4())
                 event = threading.Event()
-                thread = threading.Thread(target=handle, args=(socket, id_thread, event))
+                thread = threading.Thread(target=handle_t1, args=(socket, id_thread, event))
                 thread.start()
 
                 SOCKETS[id_thread] = socket
                 THREADS[id_thread] = [thread, event]
 
                 self.tab_view.list_connections.insert('', ck.END, id=id_thread, values=(e_type, e_host, e_port))
+        elif i_type == 0 and i_host != "0.0.0.0":
+            id_thread = str(uuid4())
+            event = threading.Event()
+            thread = threading.Thread(target=handle_t2, args=(id_thread, event))
+            thread.start()
+
+            THREADS[id_thread] = [thread, event]
+
+            self.tab_view.list_connections.insert('', ck.END, id=id_thread, values=(e_type, e_host, e_port))
 
 
 if __name__ == '__main__':
