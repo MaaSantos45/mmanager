@@ -170,7 +170,6 @@ class Application(ck.CTk):
         for record in selected:
             self.tab_view.list_connections.delete(record)
             try:
-                SOCKETS[record].send(b'Disconnected by host')
                 self.del_user(record, SOCKETS[record])
                 thread, event = THREADS[record]
                 event.set()
