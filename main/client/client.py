@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 import socket as s
 import os
+import signal
 import sys
 import threading
 from uuid import uuid4
@@ -173,7 +174,7 @@ class Application(ck.CTk):
                 self.del_user(record, SOCKETS[record])
                 thread, event = THREADS[record]
                 event.set()
-                thread.join(0.5)
+                thread.join(0.1)
             except KeyError:
                 continue
             THREADS.pop(record)
@@ -195,7 +196,7 @@ class Application(ck.CTk):
         global USERS
         try:
             client.send(b'Disconnected!\n')
-        except OSError as e:
+        except OSError:
             pass
         USERS.pop(id_thread, None)
         client.close()
@@ -234,12 +235,13 @@ class Application(ck.CTk):
                     break
 
                 self.add_user(id_t, c, a)
-                while True:
-                    if evt.is_set():
-                        break
+                while True and not evt.is_set():
                     try:
+                        c.settimeout(2)
                         data = c.recv(1024)
                         print(data.decode())
+                    except socket.timeout:
+                        continue
                     except ConnectionResetError:
                         self.del_user(id_t, c)
                         break
@@ -263,12 +265,13 @@ class Application(ck.CTk):
                     pass
                 else:
                     self.add_user(id_t, skt, (e_host, i_port))
-                    while True:
-                        if evt.is_set():
-                            break
+                    while True and not evt.is_set():
                         try:
+                            skt.settimeout(2)
                             data = skt.recv(1024)
                             print(data.decode())
+                        except socket.timeout:
+                            continue
                         except ConnectionResetError:
                             self.del_user(id_t, skt)
                             break
@@ -288,6 +291,7 @@ class Application(ck.CTk):
                 id_thread = str(uuid4())
                 event = threading.Event()
                 thread = threading.Thread(target=handle_t1, args=(socket, id_thread, event))
+                thread.daemon = True
                 thread.start()
 
                 SOCKETS[id_thread] = socket
@@ -298,6 +302,7 @@ class Application(ck.CTk):
             id_thread = str(uuid4())
             event = threading.Event()
             thread = threading.Thread(target=handle_t2, args=(id_thread, event))
+            thread.daemon = True
             thread.start()
 
             THREADS[id_thread] = [thread, event]
@@ -309,10 +314,11 @@ if __name__ == '__main__':
     app = Application("Syntex MManager")
 
     def on_close():
+        print('closing!')
         global THREADS, SOCKETS, USERS
-        for id, (thread, event) in THREADS.items():
+        for _, (thread, event) in THREADS.items():
             event.set()
-            thread.join(0.1)
+            thread.join(0.5)
         for key, socket in SOCKETS.items():
             try:
                 socket.close()
