@@ -14,6 +14,7 @@ COLOR_THEME = open('settings/color_theme', mode='r').read()
 SOCKETS = {}
 THREADS = {}
 USERS = {}
+CONNECTIONS = {}
 
 
 class FrameTabConnections(ck.CTkFrame):
@@ -144,6 +145,8 @@ class Application(ck.CTk):
         self.tab_view.list_connections.heading('port', text='PORT')
         self.tab_view.list_connections.pack(padx=2, pady=10, fill=ck.BOTH, expand=True)
 
+        self.load_connections()
+
     def __repr__(self):
         return f"App {self.title_str}"
 
@@ -165,11 +168,24 @@ class Application(ck.CTk):
         else:
             self.tab_view.label_need_restart.configure(text='')
 
+    def load_connections(self):
+        with open('settings/connections', 'r') as connections_file:
+            connections = connections_file.read().splitlines()
+            for connection in connections:
+                e_type, e_host, e_port = connection.split('$')
+                self.add_connection({'e_type': e_type, 'e_host': e_host, 'e_port': e_port})
+
     def del_connection(self):
-        global THREADS, SOCKETS
+        global THREADS, SOCKETS, CONNECTIONS
         selected = self.tab_view.list_connections.selection()
         for record in selected:
             self.tab_view.list_connections.delete(record)
+            with open('settings/connections', 'r') as file:
+                actual_connections = file.read()
+
+            with open('settings/connections', 'w') as connections_file:
+                new_connections = actual_connections.replace(f'{CONNECTIONS[record]}\n', '')
+                connections_file.write(new_connections)
             try:
                 self.del_user(record, SOCKETS[record])
                 thread, event = THREADS[record]
@@ -179,6 +195,7 @@ class Application(ck.CTk):
                 continue
             THREADS.pop(record)
             SOCKETS.pop(record)
+            CONNECTIONS.pop(record)
 
     def add_user(self, id_thread, client, addr):
         global USERS
@@ -203,12 +220,16 @@ class Application(ck.CTk):
         if id_thread in self.tab_view.list_users.get_children():
             self.tab_view.list_users.delete(id_thread)
 
-    def add_connection(self):
+    def add_connection(self, load_connection: dict = None):
         global THREADS
-        e_type = self.tab_view.frame_connection.entry_type.get()
-        e_host = self.tab_view.frame_connection.entry_host.get()
-        e_port = self.tab_view.frame_connection.entry_port.get()
-
+        if load_connection is None:
+            e_type = self.tab_view.frame_connection.entry_type.get()
+            e_host = self.tab_view.frame_connection.entry_host.get()
+            e_port = self.tab_view.frame_connection.entry_port.get()
+        else:
+            e_type = load_connection['e_type']
+            e_host = load_connection['e_host']
+            e_port = load_connection['e_port']
         self.tab_view.frame_connection.entry_host.delete(0, ck.END)
         self.tab_view.frame_connection.entry_port.delete(0, ck.END)
 
@@ -237,11 +258,8 @@ class Application(ck.CTk):
                 self.add_user(id_t, c, a)
                 while True and not evt.is_set():
                     try:
-                        c.settimeout(2)
                         data = c.recv(1024)
                         print(data.decode())
-                    except socket.timeout:
-                        continue
                     except ConnectionResetError:
                         self.del_user(id_t, c)
                         break
@@ -267,11 +285,8 @@ class Application(ck.CTk):
                     self.add_user(id_t, skt, (e_host, i_port))
                     while True and not evt.is_set():
                         try:
-                            skt.settimeout(2)
                             data = skt.recv(1024)
                             print(data.decode())
-                        except socket.timeout:
-                            continue
                         except ConnectionResetError:
                             self.del_user(id_t, skt)
                             break
@@ -298,6 +313,13 @@ class Application(ck.CTk):
                 THREADS[id_thread] = [thread, event]
 
                 self.tab_view.list_connections.insert('', ck.END, id=id_thread, values=(e_type, e_host, e_port))
+                with open('settings/connections', 'r') as file:
+                    actual = file.read().splitlines()
+
+                with open('settings/connections', 'a') as file:
+                    if f'{e_type}${e_host}${e_port}' not in actual:
+                        file.write(f'{e_type}${e_host}${e_port}\n')
+                CONNECTIONS[id_thread] = f'{e_type}${e_host}${e_port}'
         elif i_type == 0 and i_host != "0.0.0.0":
             id_thread = str(uuid4())
             event = threading.Event()
@@ -308,6 +330,13 @@ class Application(ck.CTk):
             THREADS[id_thread] = [thread, event]
 
             self.tab_view.list_connections.insert('', ck.END, id=id_thread, values=(e_type, e_host, e_port))
+            with open('settings/connections', 'r') as file:
+                actual = file.read().splitlines()
+
+            with open('settings/connections', 'a') as file:
+                if f'{e_type}${e_host}${e_port}' not in actual:
+                    file.write(f'{e_type}${e_host}${e_port}\n')
+            CONNECTIONS[id_thread] = f'{e_type}${e_host}${e_port}'
 
 
 if __name__ == '__main__':
