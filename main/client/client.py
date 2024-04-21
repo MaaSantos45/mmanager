@@ -1,6 +1,7 @@
 import time
 import customtkinter as ck
 import tkinter as tk
+from tkinter import filedialog as fd
 from tkinter import ttk
 import socket as s
 import os
@@ -106,9 +107,37 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
             self.textbox.insert(tk.END, message)
             self.textbox.yview(tk.END)
 
+        self.my_menu = tk.Menu(self, tearoff=False)
+        self.my_menu.add_command(label="Save on file", command=self.save_on_file)
+        self.my_menu.add_command(label='Open history', command=self.open_history)
+        self.my_menu.add_command(label="Clear", command=(lambda: self.textbox.delete(1.0, tk.END)))
+        self.bind('<Button-3>', self.popup)
+
+    def popup(self, event):
+        self.my_menu.tk_popup(event.x_root, event.y_root)
+
     def tab(self, _):
         self.textbox.insert(tk.INSERT, " " * 4)
         return "break"
+
+    def save_on_file(self):
+        filename = fd.asksaveasfile(initialdir='./instances/shell_history', title='Save File', filetypes=(('Text Files', '*.txt'), ("All Files", "*.*")))
+        filename.write(self.textbox.get(0.0, tk.END))
+        self.lift()
+
+    def open_history(self):
+        global MESSAGES
+        filename = fd.askopenfilename(initialdir='./instances/shell_history', title='Open File', filetypes=(('Text Files', '*.txt'), ("All Files", "*.*")))
+        if filename:
+            with open(filename, 'r') as file:
+                file_content = file.read()
+                self.textbox.insert(tk.END, file_content)
+                self.textbox.yview(tk.END)
+            if self.id in MESSAGES.keys() and MESSAGES[self.id] and isinstance(MESSAGES[self.id], list):
+                MESSAGES[self.id].append(file_content)
+            else:
+                MESSAGES[self.id] = [file_content]
+        self.lift()
 
     def hendle_send(self, event):
         if event.send_event:
@@ -253,7 +282,6 @@ class Application(ck.CTk):
             pass
         except Exception as e:
             log_errors(e)
-            print(e)
 
     def popup(self, event):
         self.my_menu_user.tk_popup(event.x_root, event.y_root)

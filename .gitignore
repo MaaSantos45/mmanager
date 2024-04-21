@@ -1,4 +1,5 @@
 build
 dist
 venv
+main/client/instances/shell_history
 *.spec
