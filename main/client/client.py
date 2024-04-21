@@ -15,6 +15,12 @@ SOCKETS = {}
 THREADS = {}
 USERS = {}
 CONNECTIONS = {}
+MESSAGES = {}
+
+
+def log_errors(exception):
+    with open('logs/error.log', 'a') as file:
+        file.write(str(exception) + '\n')
 
 
 class FrameTabConnections(ck.CTkFrame):
@@ -65,14 +71,67 @@ class FrameButtonConnections(ck.CTkFrame):
         self.button_del_connection.grid(column=1, row=0, padx=2, pady=10)
 
 
+class TopLevelWindowUserTerminal(ck.CTkToplevel):
+    def __init__(self, _, user_record, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        w = 600
+        h = 400
+
+        self.geometry("%dx%d" % (w, h))
+        self.title(f'User Terminal: {user_record}')
+        self.user = USERS[user_record]
+        self.id = user_record
+        self.root_title = _.title_str
+        self.root = _
+
+        self.frame_text = ck.CTkFrame(self)
+        self.frame_input = ck.CTkFrame(self)
+        self.frame_input.grid_columnconfigure(1, weight=1)
+
+        self.frame_text.pack(fill=tk.BOTH, expand=True)
+        self.frame_input.pack(fill=tk.X, expand=False)
+
+        self.textbox = ck.CTkTextbox(self.frame_text)
+        self.textbox.bind("<Tab>", self.tab)
+        self.textbox.pack(fill=tk.BOTH, expand=True)
+
+        self.input_entry = ck.CTkEntry(self.frame_input)
+        self.label_input_entry = ck.CTkLabel(self.frame_input, text=f'{self.root_title}$ ')
+
+        self.label_input_entry.grid(column=0, row=0, padx=0, pady=0)
+        self.input_entry.grid(column=1, row=0, padx=0, pady=0, sticky=tk.EW)
+        self.input_entry.bind("<Return>", command=self.hendle_send)
+
+        for message in MESSAGES[user_record]:
+            self.textbox.insert(tk.END, message)
+            self.textbox.yview(tk.END)
+
+    def tab(self, _):
+        self.textbox.insert(tk.INSERT, " " * 4)
+        return "break"
+
+    def hendle_send(self, event):
+        if event.send_event:
+            data = self.input_entry.get() + '\n'
+            message = self.root_title + '$ ' + data
+            MESSAGES[self.id].append(message)
+            try:
+                self.user.send(data.encode())
+            except OSError:
+                return
+            self.input_entry.delete(0, tk.END)
+            self.textbox.insert(tk.END, message)
+            self.textbox.yview(tk.END)
+
+
 class Application(ck.CTk):
     global APPARENCE
     global COLOR_THEME
     ck.set_appearance_mode(APPARENCE)
     ck.set_default_color_theme(COLOR_THEME)
 
-    def __init__(self, title):
-        super().__init__()
+    def __init__(self, title, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Setup
         w = 800
@@ -121,6 +180,7 @@ class Application(ck.CTk):
         self.tab_view.label_need_restart.grid(column=2, row=1, padx=2, pady=10)
         
         # Tab Users
+
         self.tab_view.label_users = ck.CTkLabel(self.tab_users, text="Users connected!")
         self.tab_view.label_users.pack()
 
@@ -130,6 +190,10 @@ class Application(ck.CTk):
         self.tab_view.list_users.heading('port', text='PORT')
         self.tab_view.list_users.heading('other', text='OTHER')
         self.tab_view.list_users.pack(fill=ck.BOTH, expand=True)
+
+        self.my_menu_user = tk.Menu(self.tab_view.list_users, tearoff=False)
+        self.my_menu_user.add_command(label='Open Shell', command=self.open_toplevel_userterminal)
+        self.tab_view.list_users.bind("<Button-3>", self.popup)
 
         # Tab Connections
 
@@ -146,6 +210,8 @@ class Application(ck.CTk):
         self.tab_view.list_connections.pack(padx=2, pady=10, fill=ck.BOTH, expand=True)
 
         self.load_connections()
+
+        self.toplevel_user_terminal = None
 
     def __repr__(self):
         return f"App {self.title_str}"
@@ -175,6 +241,40 @@ class Application(ck.CTk):
                 e_type, e_host, e_port = connection.split('$')
                 self.add_connection({'e_type': e_type, 'e_host': e_host, 'e_port': e_port})
 
+    def open_toplevel_userterminal(self):
+        user_record = self.tab_view.list_users.selection()
+        if user_record:
+            if self.toplevel_user_terminal is not None and self.toplevel_user_terminal.winfo_exists():
+                self.toplevel_user_terminal.destroy()
+            self.toplevel_user_terminal = TopLevelWindowUserTerminal(self, user_record[0])
+        try:
+            self.toplevel_user_terminal.after(50, self.toplevel_user_terminal.lift)
+        except AttributeError:
+            pass
+        except Exception as e:
+            log_errors(e)
+            print(e)
+
+    def popup(self, event):
+        self.my_menu_user.tk_popup(event.x_root, event.y_root)
+
+    def hendle_data_user(self, data: bytes, user_record):
+        try:
+            message = data.decode('utf-8')
+        except UnicodeDecodeError:
+            message = data.decode('cp850', 'replace')
+        global MESSAGES
+        if (
+            self.toplevel_user_terminal is not None and
+            self.toplevel_user_terminal.winfo_exists() and
+            self.toplevel_user_terminal.id == user_record
+        ):
+            self.toplevel_user_terminal.textbox.insert(tk.END, message)
+            self.toplevel_user_terminal.textbox.yview(tk.END)
+
+        if user_record in MESSAGES.keys():
+            MESSAGES[user_record].append(data)
+
     def del_connection(self):
         global THREADS, SOCKETS, CONNECTIONS
         selected = self.tab_view.list_connections.selection()
@@ -199,11 +299,13 @@ class Application(ck.CTk):
 
     def add_user(self, id_thread, client, addr):
         global USERS
-        try:
-            client.send(b'Connected!\n')
-        except OSError:
-            pass
+        # try:
+        #     client.send(b'Connected!\n')
+        # except OSError:
+        #     pass
         USERS[id_thread] = client
+        if id_thread not in MESSAGES.keys():
+            MESSAGES[id_thread] = []
         ip, port = addr
         info = f"connected on {client.getsockname()}"
         if id_thread not in self.tab_view.list_users.get_children():
@@ -211,14 +313,30 @@ class Application(ck.CTk):
 
     def del_user(self, id_thread, client):
         global USERS
+        # try:
+        #     client.send(b'Disconnected!\n')
+        # except OSError:
+        #     pass
+        skt = USERS.pop(id_thread, None)
         try:
-            client.send(b'Disconnected!\n')
-        except OSError:
-            pass
-        USERS.pop(id_thread, None)
-        client.close()
+            client.close()
+        except Exception as e:
+            log_errors(e)
+
+        try:
+            skt.close()
+        except Exception as e:
+            log_errors(e)
+
         if id_thread in self.tab_view.list_users.get_children():
             self.tab_view.list_users.delete(id_thread)
+
+        if (
+            self.toplevel_user_terminal is not None and
+            self.toplevel_user_terminal.winfo_exists() and
+            self.toplevel_user_terminal.id == id_thread
+        ):
+            self.toplevel_user_terminal.destroy()
 
     def add_connection(self, load_connection: dict = None):
         global THREADS
@@ -252,19 +370,24 @@ class Application(ck.CTk):
             while id_t in children and not evt.is_set():
                 try:
                     c, a = skt.accept()
-                except OSError:
+                except OSError as ee:
+                    print(ee)
                     break
 
                 self.add_user(id_t, c, a)
                 while True and not evt.is_set():
                     try:
                         data = c.recv(1024)
-                        print(data.decode())
                     except ConnectionResetError:
                         self.del_user(id_t, c)
                         break
                     except Exception as e:
                         print(e)
+                        break
+                    if data:
+                        self.hendle_data_user(data, id_t)
+                    else:
+                        self.del_user(id_t, c)
                         break
             self.del_user(id_t, skt)
 
@@ -286,12 +409,12 @@ class Application(ck.CTk):
                     while True and not evt.is_set():
                         try:
                             data = skt.recv(1024)
-                            print(data.decode())
+                            self.hendle_data_user(data, id_t)
                         except ConnectionResetError:
                             self.del_user(id_t, skt)
                             break
                         except Exception as e:
-                            print(e)
+                            log_errors(e)
                             break
                 self.del_user(id_t, skt)
 
@@ -343,7 +466,6 @@ if __name__ == '__main__':
     app = Application("Syntex MManager")
 
     def on_close():
-        print('closing!')
         global THREADS, SOCKETS, USERS
         for _, (thread, event) in THREADS.items():
             event.set()
@@ -364,4 +486,7 @@ if __name__ == '__main__':
         app.destroy()
 
     app.protocol("WM_DELETE_WINDOW", on_close)
-    app.mainloop()
+    try:
+        app.mainloop()
+    except Exception as error:
+        log_errors(error)
