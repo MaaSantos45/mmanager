@@ -1,6 +1,7 @@
 build
 dist
 venv
+main/client/logs/*
 */logs/*
 main/client/instances/shell_history/*
 *.spec
