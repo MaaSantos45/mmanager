@@ -12,6 +12,8 @@ import shutil
 import threading
 from uuid import uuid4
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 APPARENCE = open('settings/apparence', mode='r').read()
 COLOR_THEME = open('settings/color_theme', mode='r').read()
 SOCKETS = {}
@@ -109,6 +111,8 @@ class FrameTabCompile(ck.CTkFrame):
 
         self.label_entry_vm.grid(column=0, row=1, padx=6, pady=10)
         self.entry_vm.grid(column=1, row=1, padx=6, pady=10)
+        self.label_entry_compiler.grid(column=2, row=1, padx=6, pady=10)
+        self.entry_compiler.grid(column=3, row=1, padx=6, pady=10)
 
         self.label_entry_host.grid(column=0, row=2, padx=6, pady=10)
         self.entry_host.grid(column=1, row=2, padx=6, pady=10)
@@ -163,8 +167,38 @@ class FrameButtonCompile(ck.CTkFrame):
         self.button_compile.grid(column=0, row=0, padx=2, pady=10)
 
 
+class TopLevelWindowWarning(ck.CTkToplevel):
+    def __init__(self, master, title, warnings, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        w = 400
+        h = 200
+
+        self.geometry("%dx%d" % (w, h))
+        self.title(title)
+        self.root = master
+
+        self.frame_text = ck.CTkFrame(self)
+        self.frame_text.pack(fill=tk.BOTH, expand=True)
+
+        self.textbox = ck.CTkTextbox(self.frame_text)
+        self.textbox.bind("<Tab>", self.tab)
+        self.textbox.pack(fill=tk.BOTH, expand=True)
+
+        self.insert_warning(warnings)
+
+    def tab(self, _):
+        self.textbox.insert(tk.INSERT, " " * 4)
+        return "break"
+
+    def insert_warning(self, warnings):
+        for warning in warnings:
+            self.textbox.insert(tk.END, warning)
+            self.textbox.yview(tk.END)
+
+
 class TopLevelWindowUserTerminal(ck.CTkToplevel):
-    def __init__(self, _, user_record, *args, **kwargs):
+    def __init__(self, master, user_record, *args, **kwargs):
         super().__init__(*args, **kwargs)
         w = 600
         h = 400
@@ -173,8 +207,8 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
         self.title(f'User Terminal: {user_record}')
         self.user = USERS[user_record]
         self.id = user_record
-        self.root_title = _.title_str
-        self.root = _
+        self.root_title = master.title_str
+        self.root = master
 
         self.frame_text = ck.CTkFrame(self)
         self.frame_input = ck.CTkFrame(self)
@@ -251,6 +285,9 @@ class Application(ck.CTk):
     ck.set_appearance_mode(APPARENCE)
     ck.set_default_color_theme(COLOR_THEME)
 
+    working_dir = os.path.join(os.getcwd(), "source")
+    dist_dir = os.path.join(working_dir, "dist")
+
     def __init__(self, title, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -299,7 +336,7 @@ class Application(ck.CTk):
         self.tab_view.label_color_theme.grid(column=0, row=1, padx=2)
         self.tab_view.choise_color_theme.grid(column=1, row=1, padx=2, pady=10)
         self.tab_view.label_need_restart.grid(column=2, row=1, padx=2, pady=10)
-        
+
         # Tab Users
         self.tab_view.label_users = ck.CTkLabel(self.tab_users, text="Users connected!")
         self.tab_view.label_users.pack()
@@ -331,6 +368,7 @@ class Application(ck.CTk):
         self.load_connections()
 
         self.toplevel_user_terminal = None
+        self.toplevel_warning = None
 
         # Tab Compile
         self.tab_view.frame_compile = FrameTabCompile(self.tab_compile)
@@ -338,6 +376,13 @@ class Application(ck.CTk):
 
         self.tab_view.frame_button_compile = FrameButtonCompile(self.tab_compile, func=self)
         self.tab_view.frame_button_compile.pack(padx=2, pady=10)
+
+        self.tab_view.label_dist_folder = ck.CTkLabel(self.tab_compile, text=f'{self.dist_dir}')
+        self.tab_view.label_dist_folder.pack(padx=2, pady=10)
+
+        self.tab_view.dist_folder = ck.CTkTextbox(self.tab_compile)
+        self.tab_view.dist_folder.pack(padx=2, pady=10, fill=ck.BOTH, expand=True)
+        self.update_dist_folder()
 
     def __repr__(self):
         return f"App {self.title_str}"
@@ -379,6 +424,25 @@ class Application(ck.CTk):
             pass
         except Exception as e:
             log_errors(e)
+
+    def open_toplevel_warnings(self, warnings: list):
+        if self.toplevel_warning is not None and self.toplevel_warning.winfo_exists():
+            self.toplevel_warning.destroy()
+        self.toplevel_warning = TopLevelWindowWarning(self, "Compiler Status", warnings)
+
+        try:
+            self.toplevel_warning.after(50, self.toplevel_warning.lift)
+        except AttributeError:
+            pass
+        except Exception as e:
+            log_errors(e)
+
+    def update_dist_folder(self):
+        files = os.listdir(self.dist_dir)
+        self.tab_view.dist_folder.delete(1.0, tk.END)
+        for file in files:
+            self.tab_view.dist_folder.insert(tk.END, file)
+            self.tab_view.dist_folder.insert(tk.END, '\n')
 
     def popup(self, event):
         self.my_menu_user.tk_popup(event.x_root, event.y_root)
@@ -604,6 +668,10 @@ class Application(ck.CTk):
         if admin != "False" and admin != "True":
             admin = "False"
 
+        warning = f"Inicialized with compiler: {compiler}. \non working dir: {working_dir}. \non dist dir: {dist_dir}. \n"
+
+        self.open_toplevel_warnings([warning])
+
         if compiler == 'PyInstaller':
             writer = (
                 f'HOST = "{host}"\n'
@@ -653,17 +721,53 @@ class Application(ck.CTk):
         else:
             raise ValueError("Compiler not found.")
 
-        if args:
+        if args and self.toplevel_warning is not None:
+            self.run_subprocess(args, working_dir, dist_dir, filename)
+
+        self.tab_view.frame_compile.entry_host.delete(0, tk.END)
+        self.tab_view.frame_compile.entry_port.delete(0, tk.END)
+        self.tab_view.frame_compile.entry_source_file.delete(0, tk.END)
+        self.tab_view.frame_compile.entry_filename.delete(0, tk.END)
+
+    def run_subprocess(self, args, working_dir, dist_dir, filename):
+        def read_output(proc: subprocess.Popen):
+            for line in iter(proc.stdout.readline, b''):
+                self.toplevel_warning.insert_warning([line])
+                if not line:
+                    proc.stdout.close()
+                    break
+
+            proc.wait()
             try:
-                subprocess.call(args)
-            except Exception as e:
-                print(e)
-            else:
-                try:
-                    shutil.rmtree(f"{working_dir}\\build")
-                    os.remove(os.path.join(dist_dir, f'{filename}.spec'))
-                except FileNotFoundError:
-                    pass
+                shutil.rmtree(f"{working_dir}\\build")
+                os.remove(os.path.join(dist_dir, f'{filename}.spec'))
+            except FileNotFoundError:
+                pass
+            warning = f"REMOVED TREE: {working_dir}\\build. \nREMOVED: {os.path.join(dist_dir, f'{filename}.spec')}"
+            self.toplevel_warning.after(50, self.toplevel_warning.insert_warning, [warning])
+            self.toplevel_warning.after(50, self.update_dist_folder())
+
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        thread = threading.Thread(target=read_output, args=(process,), daemon=True)
+        thread.start()
+        # thread.join()
+
+        # time.sleep(1)
+        # try:
+        #     proc = subprocess.run(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        #     out, err = proc.communicate()
+        #     pass
+        # except Exception as e:
+        #     print(e)
+        # else:
+        #     self.toplevel_warning.after(50, self.toplevel_warning.insert_warning, [out, err])
+        #     try:
+        #         shutil.rmtree(f"{working_dir}\\build")
+        #         os.remove(os.path.join(dist_dir, f'{filename}.spec'))
+        #     except FileNotFoundError:
+        #         pass
+        #     warning = f"REMOVED TREE: {working_dir}\\build. \nREMOVED: {os.path.join(dist_dir, f'{filename}.spec')}"
+        #     self.toplevel_warning.after(50, self.toplevel_warning.insert_warning, [warning])
 
 
 if __name__ == '__main__':
