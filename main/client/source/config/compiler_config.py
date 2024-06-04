@@ -1,5 +1,5 @@
 HOST = "127.0.0.1"
-PORT = 556
+PORT = 4556
 ACTIVATE = True
 PERSIST = False
 ADMIN = True

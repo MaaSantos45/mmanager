@@ -1,4 +1,4 @@
-#define HOST "localhost"
+#define HOST ""
 #define PORT 555
 #define ACTIVATE false
 #define PERSIST false
