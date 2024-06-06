@@ -57,8 +57,5 @@ def build_client():
 
 
 if __name__ == "__main__":
-    try:
-        build_client()
+    build_client()
 
-    except Exception as e:
-        print(e)
