@@ -1,9 +1,17 @@
 import PyInstaller.__main__ as py
 import os
 import shutil
+import sys
 
 
-def build_client():
+def check_datas():
+    dirpath = f'main/client/'
+    for dirname in ['icons', 'instances', 'logs', 'plugins', 'settings', 'source']:
+        if not os.path.exists(os.path.join(dirpath, dirname)):
+            os.mkdir(os.path.join(dirpath, dirname))
+
+
+def build_client(name: str):
     args = [
         'main/client/client.py',
         '--noconfirm',
@@ -16,6 +24,7 @@ def build_client():
         '--add-data', 'main/client/plugins;plugins/',
         '--add-data', 'main/client/settings;settings/',
         '--add-data', 'main/client/source;source/',
+        '--name', name
     ]
 
     try:
@@ -27,35 +36,40 @@ def build_client():
     else:
         def mv_dir(path_, dirname):
             try:
-                shutil.move(path_, 'dist/client/')
+                shutil.move(path_, f'dist/{name}/')
             except FileNotFoundError:
-                os.mkdir(os.path.join('dist/client/', dirname))
+                os.mkdir(os.path.join(f'dist/{name}/', dirname))
 
         shutil.rmtree('build')
-        os.remove('client.spec')
 
-        mv_dir('dist/client/_internal/icons', 'icons')
-        mv_dir('dist/client/_internal/instances', 'instances')
-        mv_dir('dist/client/_internal/logs', 'logs')
-        mv_dir('dist/client/_internal/plugins', 'plugins')
-        mv_dir('dist/client/_internal/settings', 'settings')
-        mv_dir('dist/client/_internal/source', 'source')
+        os.remove(f'{name}.spec')
 
-        try:
-            shutil.rmtree('dist/client/instances/shell_history')
-        except FileNotFoundError:
-            pass
-        os.mkdir('dist/client/instances/shell_history')
+        mv_dir(f'dist/{name}/_internal/icons', 'icons')
+        mv_dir(f'dist/{name}/_internal/instances', 'instances')
+        mv_dir(f'dist/{name}/_internal/logs', 'logs')
+        mv_dir(f'dist/{name}/_internal/plugins', 'plugins')
+        mv_dir(f'dist/{name}/_internal/settings', 'settings')
+        mv_dir(f'dist/{name}/_internal/source', 'source')
 
         try:
-            shutil.rmtree('dist/client/logs')
+            shutil.rmtree(f'dist/{name}/instances/shell_history')
         except FileNotFoundError:
             pass
-        os.mkdir('dist/client/logs')
+        os.mkdir(f'dist/{name}/instances/shell_history')
+
+        try:
+            shutil.rmtree(f'dist/{name}/logs')
+        except FileNotFoundError:
+            pass
+        os.mkdir(f'dist/{name}/logs')
 
         shutil.copytree('main/bin/', 'dist/bin/', dirs_exist_ok=True)
 
 
 if __name__ == "__main__":
-    build_client()
+    output = 'client'
+    if len(sys.argv) == 2:
+        output = sys.argv[1]
+    check_datas()
+    build_client(output)
 

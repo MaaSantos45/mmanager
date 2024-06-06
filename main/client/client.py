@@ -11,11 +11,19 @@ import subprocess
 import shutil
 import threading
 from uuid import uuid4
+from setup_env import setup_dirs
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# setup_dirs(base_dir)
+# if not os.getcwd().endswith(base_dir):
+#     try:
+#         os.chdir(f'main/{base_dir}')
+#     except Exception as err:
+#         print(err)
+#         raise NotADirectoryError("You must be on client directory(main application) or mmanager directory(project root)")
 
-APPARENCE = open('settings/apparence', mode='r').read()
-COLOR_THEME = open('settings/color_theme', mode='r').read()
+# APPARENCE = open('settings/apparence', mode='r').read()
+# COLOR_THEME = open('settings/color_theme', mode='r').read()
+
 SOCKETS = {}
 THREADS = {}
 USERS = {}
@@ -93,7 +101,7 @@ class FrameTabCompile(ck.CTkFrame):
         self.label_entry_compiler = ck.CTkLabel(self, text='Compiler')
         self.entry_compiler = ck.CTkOptionMenu(
             self,
-            values=['PyInstaller', 'MinGW-64 GCC', 'WSL Ubuntu GCC']
+            values=['PyInstaller', 'MinGW-32 GCC', 'WSL Ubuntu GCC']
         )
 
         self.label_entry_host = ck.CTkLabel(self, text='Host')
@@ -293,15 +301,16 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
 
 
 class Application(ck.CTk):
-    global APPARENCE
-    global COLOR_THEME
-    ck.set_appearance_mode(APPARENCE)
-    ck.set_default_color_theme(COLOR_THEME)
-
     def __init__(self, title, *args, **kwargs):
+        # Setup
+        self.APPARENCE = open('settings/apparence', mode='r').read()
+        self.COLOR_THEME = open('settings/color_theme', mode='r').read()
+
+        ck.set_appearance_mode(self.APPARENCE)
+        ck.set_default_color_theme(self.COLOR_THEME)
+
         super().__init__(*args, **kwargs)
 
-        # Setup
         w = 800
         h = 600
         x = (self.winfo_screenwidth() / 2) - (w / 2) + 100
@@ -309,7 +318,7 @@ class Application(ck.CTk):
 
         self.title_str = title
         self.title(self.title_str)
-        self.iconbitmap(f'icons/{APPARENCE}-syntex.ico')
+        self.iconbitmap(f'icons/{self.APPARENCE}-syntex.ico')
         self.geometry("%dx%d+%d+%d" % (w, h, x, y))
         self.grid_columnconfigure(0, weight=1)
 
@@ -327,22 +336,22 @@ class Application(ck.CTk):
         self.tab_obfuscate = self.tab_view.add("Obfuscate")
 
         # Tab Settings
-        self.tab_view.label_apparence_mode = ck.CTkLabel(self.tab_settings, text=APPARENCE)
+        self.tab_view.label_apparence_mode = ck.CTkLabel(self.tab_settings, text=self.APPARENCE)
         self.tab_view.choice_apparence = ck.CTkSwitch(
             self.tab_settings, text="Apparence",
             onvalue="Light", offvalue="Dark",
-            variable=ck.StringVar(value=APPARENCE),
+            variable=ck.StringVar(value=self.APPARENCE),
             command=self.change_apparence
         )
         self.tab_view.label_apparence_mode.grid(column=0, row=0, padx=2)
         self.tab_view.choice_apparence.grid(column=1, row=0, padx=2)
 
-        self.tab_view.label_color_theme = ck.CTkLabel(self.tab_settings, text=COLOR_THEME)
+        self.tab_view.label_color_theme = ck.CTkLabel(self.tab_settings, text=self.COLOR_THEME)
         self.tab_view.choise_color_theme = ck.CTkComboBox(
             self.tab_settings,
             values=['dark-blue', 'blue', 'green'],
             command=self.change_color_theme,
-            variable=ck.StringVar(value=COLOR_THEME)
+            variable=ck.StringVar(value=self.COLOR_THEME)
         )
         self.tab_view.label_need_restart = ck.CTkLabel(self.tab_settings, text="")
 
@@ -403,7 +412,6 @@ class Application(ck.CTk):
         return f"App {self.title_str}"
 
     def change_apparence(self):
-        global APPARENCE
         choice = self.tab_view.choice_apparence.get()
         with open('settings/apparence', 'w') as apparence_file:
             apparence_file.write(choice)
@@ -412,10 +420,9 @@ class Application(ck.CTk):
         ck.set_appearance_mode(choice)
 
     def change_color_theme(self, choice):
-        global COLOR_THEME
         with open('settings/color_theme', 'w') as color_file:
             color_file.write(choice)
-        if choice != COLOR_THEME:
+        if choice != self.COLOR_THEME:
             self.tab_view.label_need_restart.configure(text='NEED RESTART!')
         else:
             self.tab_view.label_need_restart.configure(text='')
@@ -718,7 +725,7 @@ class Application(ck.CTk):
             with open(f'{working_dir}\\config\\compiler_config.py', 'w') as config:
                 config.write(writer)
 
-        elif compiler == 'MinGW-64 GCC':
+        elif compiler == 'MinGW-32 GCC':
             writer = (
                 f'#define HOST "{host}"\n'
                 f'#define PORT {port or 555}\n'
@@ -799,6 +806,15 @@ class Application(ck.CTk):
 
 
 if __name__ == '__main__':
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    base_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+
+    try:
+        os.chdir(base_dir)
+    except Exception as error:
+        raise NotADirectoryError(f"Dir Path:{path_to_change} unable by: {error}")
+
+    setup_dirs(base_dir)
     app = Application("Syntex MManager")
 
     def on_close():
