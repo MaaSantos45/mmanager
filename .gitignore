@@ -1,8 +1,7 @@
 build
 dist
 venv
-logs
-*/logs/*
+*.log
 main/client/instances/shell_history/*
 *.spec
 */dist
