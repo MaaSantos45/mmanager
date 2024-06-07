@@ -16,6 +16,9 @@ def setup_dirs(path_to_change):
         if dirname == 'instances':
             if not os.path.exists(os.path.join(os.path.join(dir_path, 'instances'), 'shell_history')):
                 os.mkdir(os.path.join(os.path.join(dir_path, 'instances'), 'shell_history'))
+
+            if not os.path.exists(os.path.join(os.path.join(dir_path, 'instances'), 'files')):
+                os.mkdir(os.path.join(os.path.join(dir_path, 'instances'), 'files'))
         elif dirname == 'settings':
             standard = {'apparence': 'System', 'color_theme': 'dark-blue', 'connections': ''}
             for file in ['apparence', 'color_theme', 'connections']:

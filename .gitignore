@@ -3,6 +3,7 @@ dist
 venv
 *.log
 main/client/instances/shell_history/*
+main/client/instances/files/*
 *.spec
 */dist
 */build
