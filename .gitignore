@@ -4,6 +4,7 @@ venv
 *.log
 main/client/instances/shell_history/*
 main/client/instances/files/*
+main/client/logs/*
 *.spec
 */dist
 */build
